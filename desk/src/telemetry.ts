@@ -2,11 +2,16 @@ import { useStorage } from "@vueuse/core";
 import { call } from "frappe-ui";
 import "../../../frappe/frappe/public/js/lib/posthog.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const posthog: any;
-
 const APP = "helpdesk";
 const SITENAME = window.location.hostname;
+
+// extend window object to add posthog
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare global {
+  interface Window {
+    posthog: any;
+  }
+}
 
 const telemetry = useStorage("telemetry", {
   enabled: false,
@@ -19,14 +24,24 @@ export async function init() {
   if (!telemetry.value.enabled) return;
   try {
     await set_credentials();
-    posthog.init(telemetry.value.project_id, {
+    window.posthog.init(telemetry.value.project_id, {
       api_host: telemetry.value.host,
-      autocapture: true,
+      autocapture: false,
+      person_profiles: "always",
       capture_pageview: true,
       capture_pageleave: true,
-      advanced_disable_decide: true,
+      disable_session_recording: false,
+      session_recording: {
+        maskAllInputs: false,
+        maskInputOptions: {
+          password: true,
+        },
+      },
+      loaded: (posthog) => {
+        window.posthog = posthog;
+        window.posthog.identify(SITENAME);
+      },
     });
-    posthog.identify(SITENAME);
   } catch (e) {
     console.trace("Failed to initialize telemetry", e);
     telemetry.value.enabled = false;
@@ -51,17 +66,35 @@ async function set_credentials() {
   });
 }
 
-export function capture(event: string) {
+interface CaptureOptions {
+  data: {
+    user: string;
+    [key: string]: string | number | boolean | object;
+  };
+}
+
+export function capture(
+  event: string,
+  options: CaptureOptions = { data: { user: "" } }
+) {
   if (!telemetry.value.enabled) return;
-  posthog.capture(`${APP}_${event}`);
+  window.posthog.capture(`${APP}_${event}`, options);
 }
 
 export function recordSession() {
   if (!telemetry.value.enabled) return;
-  posthog.startSessionRecording();
+  if (window.posthog && window.posthog.__loaded) {
+    window.posthog.startSessionRecording();
+  }
 }
 
 export function stopSession() {
   if (!telemetry.value.enabled) return;
-  posthog.stopSessionRecording();
+  if (
+    window.posthog &&
+    window.posthog.__loaded &&
+    window.posthog.sessionRecordingStarted()
+  ) {
+    window.posthog.stopSessionRecording();
+  }
 }

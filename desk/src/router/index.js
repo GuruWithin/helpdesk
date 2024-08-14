@@ -1,14 +1,9 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useUserStore } from "@/stores/user";
-import { init as initTelemetry } from "@/telemetry";
 
 export const WEBSITE_ROOT = "Website Root";
 
-export const LOGIN = "AuthLogin";
-export const SIGNUP = "AuthSignup";
-export const VERIFY = "AuthVerify";
-export const AUTH_ROUTES = [LOGIN, SIGNUP, VERIFY];
 export const ONBOARDING_PAGE = "Setup";
 
 export const CUSTOMER_PORTAL_NEW_TICKET = "TicketNew";
@@ -33,7 +28,7 @@ export const KB_PUBLIC_CATEGORY = "KBCategoryPublic";
 
 export const CUSTOMER_PORTAL_LANDING = "TicketsCustomer";
 export const AGENT_PORTAL_LANDING = AGENT_PORTAL_TICKET_LIST;
-
+export const REDIRECT_PAGE = "/login?redirect-to=/helpdesk";
 const routes = [
   {
     path: "",
@@ -91,30 +86,6 @@ const routes = [
         path: ":ticketId",
         name: "TicketCustomer",
         component: () => import("@/pages/TicketCustomer.vue"),
-        props: true,
-      },
-    ],
-  },
-  {
-    path: "",
-    meta: {
-      auth: false,
-    },
-    children: [
-      {
-        path: "/login",
-        name: "AuthLogin",
-        component: () => import("@/pages/AuthLogin.vue"),
-      },
-      {
-        path: "/signup",
-        name: "AuthSignup",
-        component: () => import("@/pages/AuthSignup.vue"),
-      },
-      {
-        path: "/verify/:requestKey",
-        name: "AuthVerify",
-        component: () => import("@/pages/AuthVerify.vue"),
         props: true,
       },
     ],
@@ -233,35 +204,15 @@ export const router = createRouter({
   routes,
 });
 
-router.beforeEach(async (to) => {
-  const isAuthRoute = AUTH_ROUTES.includes(to.name);
+router.beforeEach(async (to, _, next) => {
   const authStore = useAuthStore();
-  const usersStore = useUserStore();
-
-  try {
-    await initTelemetry();
+  if (authStore.isLoggedIn) {
     await authStore.init();
-    await usersStore.init();
+  }
 
-    if (isAuthRoute && authStore.isLoggedIn) {
-      if (authStore.isAgent) {
-        router.replace({ name: AGENT_PORTAL_LANDING });
-      } else {
-        router.replace({ name: CUSTOMER_PORTAL_LANDING });
-      }
-    } else if (!isAuthRoute && !authStore.isLoggedIn) {
-      router.replace({ name: "Login" });
-    } else if (to.matched.length === 0) {
-      router.replace({ name: "Invalid Page" });
-    }
-  } catch {
-    if (!isAuthRoute) {
-      router.replace({
-        name: LOGIN,
-        query: {
-          redirect: to.path.toString(),
-        },
-      });
-    }
+  if (!authStore.isLoggedIn) {
+    window.location.href = REDIRECT_PAGE;
+  } else {
+    next();
   }
 });
